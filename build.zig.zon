@@ -13,9 +13,9 @@
             .lazy = true,
         },
         .mbedtls = .{
-            .url = "https://github.com/allyourcodebase/mbedtls/archive/40a2c1126b45f87d19b256229620bc2995637e5a.tar.gz",
-            .hash = "122034bd019496a4e20a775116c53ef05e3247e9a98436b3407d4c0503fa3a16cd42",
+            .url = "https://github.com/blurrycat/mbedtls/archive/refs/heads/feat/zig-0.14-dev.tar.gz",
             .lazy = true,
+            .hash = "122073bdc771fe123e549561b2dd00db703a71dcab1668a0220c89176d39ad5ecbbb",
         },
     },
     .paths = .{
