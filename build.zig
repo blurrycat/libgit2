@@ -45,8 +45,8 @@ pub fn build(b: *std.Build) !void {
     const tls_backend = b.option(
         TlsBackend,
         "tls-backend",
-        "Choose Unix TLS/SSL backend (default is mbedtls)",
-    ) orelse .mbedtls;
+        "Choose Unix TLS/SSL backend",
+    ) orelse .none;
 
     if (target.result.os.tag == .windows) {
         lib.linkSystemLibrary("winhttp");
@@ -106,10 +106,19 @@ pub fn build(b: *std.Build) !void {
                     .GIT_IO_SELECT = 1,
                 });
             },
+            .none => {
+                features.addValues(.{
+                    .GIT_SHA1_COLLISIONDETECT = 1,
+                    .GIT_SHA256_BUILTIN = 1,
+
+                    .GIT_USE_FUTIMENS = 1,
+                    .GIT_IO_POLL = 1,
+                    .GIT_IO_SELECT = 1,
+                });
+            },
         }
 
-        // ntlmclient
-        {
+        if (tls_backend != .none) {
             const ntlm = b.addStaticLibrary(.{
                 .name = "ntlmclient",
                 .target = target,
@@ -119,27 +128,30 @@ pub fn build(b: *std.Build) !void {
             ntlm.addIncludePath(libgit_src.path("deps/ntlmclient"));
             maybeAddTlsIncludes(ntlm, tls_dep, tls_backend);
 
-            const ntlm_cflags = .{
+            const ntlm_cflags_default = &[_][]const u8{
                 "-Wno-implicit-fallthrough",
                 "-DNTLM_STATIC=1",
                 "-DUNICODE_BUILTIN=1",
-                switch (tls_backend) {
-                    .openssl => "-DCRYPT_OPENSSL",
-                    .mbedtls => "-DCRYPT_MBEDTLS",
-                },
             };
+            const ntlm_cflags = switch (tls_backend) {
+                .openssl => ntlm_cflags_default[0..] ++ .{"-DCRYPT_OPENSSL"},
+                .mbedtls => ntlm_cflags_default[0..] ++ .{"-DCRYPT_MBEDTLS"},
+                .none => unreachable,
+            };
+
             ntlm.addCSourceFiles(.{
                 .root = libgit_root,
                 .files = &ntlm_sources,
-                .flags = &ntlm_cflags,
+                .flags = ntlm_cflags,
             });
             ntlm.addCSourceFiles(.{
                 .root = libgit_root,
                 .files = switch (tls_backend) {
                     .openssl => &.{"deps/ntlmclient/crypt_openssl.c"},
                     .mbedtls => &.{"deps/ntlmclient/crypt_mbedtls.c"},
+                    .none => unreachable,
                 },
-                .flags = &ntlm_cflags,
+                .flags = ntlm_cflags,
             });
 
             lib.linkLibrary(ntlm);
@@ -157,6 +169,10 @@ pub fn build(b: *std.Build) !void {
             .files = switch (tls_backend) {
                 .openssl => &.{"src/util/hash/openssl.c"},
                 .mbedtls => &.{"src/util/hash/mbedtls.c"},
+                .none => &.{
+                    "src/util/hash/builtin.c",
+                    "src/util/hash/rfc6234/sha224-256.c",
+                },
             },
             .flags = &flags,
         });
@@ -396,7 +412,7 @@ pub fn build(b: *std.Build) !void {
     }
 }
 
-const TlsBackend = enum { openssl, mbedtls };
+const TlsBackend = enum { openssl, mbedtls, none };
 
 fn maybeAddTlsIncludes(
     compile: *std.Build.Step.Compile,
@@ -407,6 +423,7 @@ fn maybeAddTlsIncludes(
         const name = switch (backend) {
             .openssl => "openssl",
             .mbedtls => "mbedtls",
+            .none => return,
         };
         compile.addIncludePath(tls.artifact(name).getEmittedIncludeTree());
     }
